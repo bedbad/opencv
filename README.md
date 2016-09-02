@@ -33,6 +33,6 @@ Note: if you have troubles with our remote repo url  use:
   mkdir build
   cd build
   cmake ../
-#after success
+ after success
   make
   make install
