@@ -1,6 +1,7 @@
 People:
   I.Antonyuk
   L.Bennett
+  Zhi Wang
 ### I don't know github readme format ###
 
 0. Install git
