@@ -1,6 +1,6 @@
 People:
   I.Antonyuk
-  II. Liandra
+  L.Bennett
 ### I don't know github readme format ###
 
 0. Install git
