@@ -1,4 +1,3 @@
-### OpenCV: Open Source Computer Vision Library
 
 0. Install git
 
