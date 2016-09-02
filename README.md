@@ -20,6 +20,19 @@
 
    git commit -m '<NaME> commit'
 
-7. push your commits to master
+7. push your commit to master branch
 
    git push origin master
+
+Note: if you have troubles with our remote repo url  use:
+
+  git remote set-url URL
+
+###Building opencv###
+
+  mkdir build
+  cd build
+  cmake ../
+#after success
+  make
+  make install
