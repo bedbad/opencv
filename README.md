@@ -1,20 +1,25 @@
 ### OpenCV: Open Source Computer Vision Library
 
-#### Resources
+0. Install git
 
-* Homepage: <http://opencv.org>
-* Docs: <http://docs.opencv.org/master/>
-* Q&A forum: <http://answers.opencv.org>
-* Issue tracking: <https://github.com/opencv/opencv/issues>
+1. go into/create your future parent directory of opencv repo
 
-#### Contributing
+2. git clone <URL>  where <URL> is address of our team repository
 
-Please read before starting work on a pull request: <https://github.com/opencv/opencv/wiki/How_to_contribute>
+3. After repository is downloaded go to it and make sure it's the same(ls, tree)
 
-Summary of guidelines:
+4.create a text file named after you and add some text to it
 
-* One pull request per issue;
-* Choose the right base branch;
-* Include tests and documentation;
-* Clean up "oops" commits before submitting;
-* Follow the coding style guide.
+  echo 'it's my first commit!' >>  <NAME>
+
+5.add that to git tracking
+
+  git add <NAME>
+
+6.make a commit
+
+  git commit -m '<NaME> commit'
+
+7.push your commits to master
+
+  git push origin master
