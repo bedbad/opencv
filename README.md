@@ -7,18 +7,18 @@
 
 3. After repository is downloaded go to it and make sure it's the same(ls, tree)
 
-4.create a text file named after you and add some text to it
+4. create a text file named after you and add some text to it
 
-  echo 'it's my first commit!' >>  <NAME>
+   echo 'it's my first commit!' >>  <NAME>
 
-5.add that to git tracking
+5. add that to git tracking
 
-  git add <NAME>
+   git add <NAME>
 
-6.make a commit
+6. make a commit
 
-  git commit -m '<NaME> commit'
+   git commit -m '<NaME> commit'
 
-7.push your commits to master
+7. push your commits to master
 
-  git push origin master
+   git push origin master
