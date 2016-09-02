@@ -31,8 +31,13 @@ Note: if you have troubles with our remote repo url  use:
 ###Building opencv###
 
   mkdir build
+  
   cd build
+  
   cmake ../
+  
  after success
+ 
   make
+  
   make install
