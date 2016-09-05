@@ -1,7 +1,8 @@
-People:
-  I.Antonyuk
-  L.Bennett
-  Zhi Wang
+Fall 2016
+CSE 2040 Group Project (Open CV)
+Members: Liandra, Abdul, Zhi, Ilya
+
+
 ### I don't know github readme format ###
 
 0. Install git
