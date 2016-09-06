@@ -39,7 +39,7 @@ Note: if you have troubles with our remote repo url  use:
   
   cd build
   
-  cmake ../
+  cmake -D BUILD_EXAMPLES=ON ../
   
  after success
  
