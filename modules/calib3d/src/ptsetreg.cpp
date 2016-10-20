@@ -344,8 +344,10 @@ public:
                 else
                     errf = err;
                 CV_Assert( errf.isContinuous() && errf.type() == CV_32F && (int)errf.total() == count );
-                std::nth_element(errf.ptr<int>(), errf.ptr<int>() + count/2, errf.ptr<int>() + count);
-                double median = errf.at<float>(count/2);
+                std::sort(errf.ptr<int>(), errf.ptr<int>() + count);
+
+                double median = count % 2 != 0 ?
+                errf.at<float>(count/2) : (errf.at<float>(count/2-1) + errf.at<float>(count/2))*0.5;
 
                 if( median < minMedian )
                 {

@@ -41,7 +41,6 @@
 #define CAROTENE_SRC_COMMON_HPP
 
 #include <cstddef>
-#include <cstdlib>
 #include <algorithm>
 
 #if defined WITH_NEON && (defined __ARM_NEON__ || defined __ARM_NEON)
