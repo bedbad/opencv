@@ -271,6 +271,12 @@ CV_IMPL CvCapture * cvCreateCameraCapture (int index)
         TRY_OPEN(capture, cvCreateCameraCapture_Giganetix(index))
         if (pref) break; // CV_CAP_GIGANETIX
 #endif
+
+#ifdef HAVE_ARAVIS_API
+    case CV_CAP_ARAVIS:
+        TRY_OPEN(capture, cvCreateCameraCapture_Aravis(index))
+        if (pref) break;
+#endif
     }
 
     return capture;
@@ -337,6 +343,12 @@ CV_IMPL CvCapture * cvCreateFileCaptureWithPreference (const char * filename, in
 #ifdef HAVE_OPENNI
     case CV_CAP_OPENNI:
         TRY_OPEN(result, cvCreateFileCapture_OpenNI (filename))
+        if (apiPreference) break;
+#endif
+
+#ifdef HAVE_OPENNI2
+    case CV_CAP_OPENNI2:
+        TRY_OPEN(result, cvCreateFileCapture_OpenNI2 (filename))
         if (apiPreference) break;
 #endif
 

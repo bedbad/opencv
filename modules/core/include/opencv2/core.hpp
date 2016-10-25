@@ -42,8 +42,8 @@
 //
 //M*/
 
-#ifndef __OPENCV_CORE_HPP__
-#define __OPENCV_CORE_HPP__
+#ifndef OPENCV_CORE_HPP
+#define OPENCV_CORE_HPP
 
 #ifndef __cplusplus
 #  error core.hpp header must be compiled as C++
@@ -1650,7 +1650,7 @@ m.cols or m.cols-1.
 @param dst output array of the same size and depth as src; it has as
 many channels as m.rows.
 @param m transformation 2x2 or 2x3 floating-point matrix.
-@sa perspectiveTransform, getAffineTransform, estimateRigidTransform, warpAffine, warpPerspective
+@sa perspectiveTransform, getAffineTransform, estimateAffine2D, warpAffine, warpPerspective
 */
 CV_EXPORTS_W void transform(InputArray src, OutputArray dst, InputArray m );
 
@@ -3197,4 +3197,4 @@ template<> struct ParamType<uchar>
 #include "opencv2/core/utility.hpp"
 #include "opencv2/core/optim.hpp"
 
-#endif /*__OPENCV_CORE_HPP__*/
+#endif /*OPENCV_CORE_HPP*/

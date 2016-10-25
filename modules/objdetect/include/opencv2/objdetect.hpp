@@ -41,8 +41,8 @@
 //
 //M*/
 
-#ifndef __OPENCV_OBJDETECT_HPP__
-#define __OPENCV_OBJDETECT_HPP__
+#ifndef OPENCV_OBJDETECT_HPP
+#define OPENCV_OBJDETECT_HPP
 
 #include "opencv2/core.hpp"
 
@@ -124,7 +124,7 @@ public:
     SimilarRects(double _eps) : eps(_eps) {}
     inline bool operator()(const Rect& r1, const Rect& r2) const
     {
-        double delta = eps*(std::min(r1.width, r2.width) + std::min(r1.height, r2.height))*0.5;
+        double delta = eps * ((std::min)(r1.width, r2.width) + (std::min)(r1.height, r2.height)) * 0.5;
         return std::abs(r1.x - r2.x) <= delta &&
             std::abs(r1.y - r2.y) <= delta &&
             std::abs(r1.x + r1.width - r2.x - r2.width) <= delta &&
@@ -255,7 +255,7 @@ public:
     @param flags Parameter with the same meaning for an old cascade as in the function
     cvHaarDetectObjects. It is not used for a new cascade.
     @param minSize Minimum possible object size. Objects smaller than that are ignored.
-    @param maxSize Maximum possible object size. Objects larger than that are ignored.
+    @param maxSize Maximum possible object size. Objects larger than that are ignored. If `maxSize == minSize` model is evaluated on single scale.
 
     The function is parallelized with the TBB library.
 
@@ -283,7 +283,7 @@ public:
     @param flags Parameter with the same meaning for an old cascade as in the function
     cvHaarDetectObjects. It is not used for a new cascade.
     @param minSize Minimum possible object size. Objects smaller than that are ignored.
-    @param maxSize Maximum possible object size. Objects larger than that are ignored.
+    @param maxSize Maximum possible object size. Objects larger than that are ignored. If `maxSize == minSize` model is evaluated on single scale.
     */
     CV_WRAP_AS(detectMultiScale2) void detectMultiScale( InputArray image,
                           CV_OUT std::vector<Rect>& objects,

@@ -594,7 +594,7 @@ public:
 
                 //internal:
                 bool fitsPDF = false;//if it remains zero a new GMM mode will be added
-                int nmodes = modesUsed[x], nNewModes = nmodes;//current number of modes in GMM
+                int nmodes = modesUsed[x];//current number of modes in GMM
                 float totalWeight = 0.f;
 
                 float* mean_m = mean;
@@ -699,8 +699,6 @@ public:
                 {
                     gmm[mode].weight *= totalWeight;
                 }
-
-                nmodes = nNewModes;
 
                 //make new mode if needed and exit
                 if( !fitsPDF && alphaT > 0.f )
@@ -846,7 +844,7 @@ void BackgroundSubtractorMOG2Impl::apply(InputArray _image, OutputArray _fgmask,
 #ifdef HAVE_OPENCL
     if (opencl_ON)
     {
-        CV_OCL_RUN(opencl_ON, ocl_apply(_image, _fgmask, learningRate))
+        CV_OCL_RUN(_image.isUMat(), ocl_apply(_image, _fgmask, learningRate))
 
         opencl_ON = false;
         initialize(_image.size(), _image.type());

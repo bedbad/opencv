@@ -1,5 +1,5 @@
-#ifndef __OPENCV_TS_PERF_HPP__
-#define __OPENCV_TS_PERF_HPP__
+#ifndef OPENCV_TS_PERF_HPP
+#define OPENCV_TS_PERF_HPP
 
 #include "opencv2/core.hpp"
 #include "ts_gtest.h"
@@ -121,7 +121,7 @@ private:
         }                                                                               \
     private: int val_;                                                                  \
     };                                                                                  \
-    inline void PrintTo(const class_name& t, std::ostream* os) { t.PrintTo(os); } }
+    static inline void PrintTo(const class_name& t, std::ostream* os) { t.PrintTo(os); } }
 
 #define CV_FLAGS(class_name, ...)                                                       \
     namespace {                                                                         \
@@ -150,7 +150,7 @@ private:
         }                                                                               \
     private: int val_;                                                                  \
     };                                                                                  \
-    inline void PrintTo(const class_name& t, std::ostream* os) { t.PrintTo(os); } }
+    static inline void PrintTo(const class_name& t, std::ostream* os) { t.PrintTo(os); } }
 
 CV_ENUM(MatDepth, CV_8U, CV_8S, CV_16U, CV_16S, CV_32S, CV_32F, CV_64F, CV_USRTYPE1)
 
@@ -704,4 +704,4 @@ struct CV_EXPORTS KeypointGreater :
 void CV_EXPORTS sort(std::vector<cv::KeyPoint>& pts, cv::InputOutputArray descriptors);
 } //namespace perf
 
-#endif //__OPENCV_TS_PERF_HPP__
+#endif //OPENCV_TS_PERF_HPP

@@ -41,27 +41,9 @@
 
 @interface CvAbstractCamera : NSObject
 {
-    AVCaptureSession* captureSession;
-    AVCaptureConnection* videoCaptureConnection;
-    AVCaptureVideoPreviewLayer *captureVideoPreviewLayer;
-
     UIDeviceOrientation currentDeviceOrientation;
 
     BOOL cameraAvailable;
-    BOOL captureSessionLoaded;
-    BOOL running;
-    BOOL useAVCaptureVideoPreviewLayer;
-
-    AVCaptureDevicePosition defaultAVCaptureDevicePosition;
-    AVCaptureVideoOrientation defaultAVCaptureVideoOrientation;
-    NSString *const defaultAVCaptureSessionPreset;
-
-    int defaultFPS;
-
-    UIView* parentView;
-
-    int imageWidth;
-    int imageHeight;
 }
 
 @property (nonatomic, strong) AVCaptureSession* captureSession;
@@ -121,19 +103,11 @@
     dispatch_queue_t videoDataOutputQueue;
     CALayer *customPreviewLayer;
 
-    BOOL grayscaleMode;
-
-    BOOL recordVideo;
-    BOOL rotateVideo;
-    AVAssetWriterInput* recordAssetWriterInput;
-    AVAssetWriterInputPixelBufferAdaptor* recordPixelBufferAdaptor;
-    AVAssetWriter* recordAssetWriter;
-
     CMTime lastSampleTime;
 
 }
 
-@property (nonatomic, assign) id<CvVideoCameraDelegate> delegate;
+@property (nonatomic, weak) id<CvVideoCameraDelegate> delegate;
 @property (nonatomic, assign) BOOL grayscaleMode;
 
 @property (nonatomic, assign) BOOL recordVideo;
@@ -167,7 +141,7 @@
     AVCaptureStillImageOutput *stillImageOutput;
 }
 
-@property (nonatomic, assign) id<CvPhotoCameraDelegate> delegate;
+@property (nonatomic, weak) id<CvPhotoCameraDelegate> delegate;
 
 - (void)takePicture;
 
