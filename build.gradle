@@ -1,0 +1,10 @@
+repositories {
+    mavenlocal()
+    maven {
+            url 'https://raw.github.com/vRallev/mvn-repo/master/'
+	        }
+		}
+
+dependencies {
+    compile 'org.opencv:opencv-android:2.4.8'
+    }

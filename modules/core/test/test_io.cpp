@@ -584,7 +584,7 @@ TEST(Core_InputOutput, FileStorageKey)
     EXPECT_NO_THROW(f << "key1" << "value1");
     EXPECT_NO_THROW(f << "_key2" << "value2");
     EXPECT_NO_THROW(f << "key_3" << "value3");
-    const std::string expected = "%YAML 1.0\n---\nkey1: value1\n_key2: value2\nkey_3: value3\n";
+    const std::string expected = "%YAML:1.0\n---\nkey1: value1\n_key2: value2\nkey_3: value3\n";
     ASSERT_STREQ(f.releaseAndGetString().c_str(), expected.c_str());
 }
 
@@ -927,4 +927,26 @@ TEST(Core_InputOutput, filestorage_json_comment)
     });
 
     EXPECT_EQ(str, String("value"));
+}
+
+TEST(Core_InputOutput, filestorage_utf8_bom)
+{
+    EXPECT_NO_THROW(
+    {
+        String content ="\xEF\xBB\xBF<?xml version=\"1.0\"?>\n<opencv_storage>\n</opencv_storage>\n";
+        cv::FileStorage fs(content, cv::FileStorage::READ | cv::FileStorage::MEMORY);
+        fs.release();
+    });
+    EXPECT_NO_THROW(
+    {
+        String content ="\xEF\xBB\xBF%YAML:1.0\n";
+        cv::FileStorage fs(content, cv::FileStorage::READ | cv::FileStorage::MEMORY);
+        fs.release();
+    });
+    EXPECT_NO_THROW(
+    {
+        String content ="\xEF\xBB\xBF{\n}\n";
+        cv::FileStorage fs(content, cv::FileStorage::READ | cv::FileStorage::MEMORY);
+        fs.release();
+    });
 }
