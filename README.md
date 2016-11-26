@@ -53,7 +53,7 @@ Note: if you have troubles with our remote repo url  use:
  #####after success######
  
       make 
-  (make -j<n> faster with >=<n> processors)
+  (make -jx faster with >=x processors)
   
       sudo make install
  
