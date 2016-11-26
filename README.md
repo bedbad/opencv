@@ -15,35 +15,48 @@ Members: Liandra, Abdul, Zhi, Ilya
 
 4. create a text file named after you and add some text to it
 
-   echo 'it's my first commit!' >>  <NAME>
+     echo 'it's my first commit!' >>  <NAME>
 
 5. add that to git tracking
 
-   git add <NAME>
+     git add <NAME>
 
 6. make a commit
 
-   git commit -m '<NaME> commit'
+     git commit -m '<NaME> commit'
 
 7. push your commit to master branch
 
-   git push origin master
+     git push origin master
 
 Note: if you have troubles with our remote repo url  use:
 
-  git remote set-url URL
+     git remote set-url URL
 
 ###Building opencv###
 
-  mkdir build
+      mkdir build
   
-  cd build
+      cd build
   
-  cmake -D BUILD_EXAMPLES=ON ../
+      cmake -D BUILD_EXAMPLES=ON  ../
+  (add all needed flags)
   
- after success
+  Alternatively 
+  cmake-gui:
+  sources: ../opencv
+  build: ../opencv/build
+  
+  check all needed flags and add your own(BUILD_EXAMPLES)
+  dont build java, cuda, etc it WILL slow the build!
+ #####after success######
  
-  make
-  
-  make install
-i just want to check..
+      make 
+  (make -j<n> faster with >=<n> processors)
+ sudo make install
+ 
+ ##########TO CHECK THE BUILD############
+ set needed Environmental variables: LD_LIBRARY_PATH, etc
+ compile with pkg-config for convienience:
+     g++ -o out.exe sourcefile `pkg-config --cflags --libs opencv` 
+ 
