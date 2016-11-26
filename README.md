@@ -52,7 +52,9 @@ Note: if you have troubles with our remote repo url  use:
   build: ../opencv/build
   
   check all needed flags and add your own(BUILD_EXAMPLES)
+  
   dont build java, cuda, etc it WILL slow the build!
+  
  #####after success######
  
       make 
