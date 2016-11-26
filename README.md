@@ -2,6 +2,8 @@ Fall 2016
 CSE 2040 Group Project (Open CV)
 Members: Liandra, Abdul, Zhi, Ilya
 
+###Handling Git###
+
 !Always Pull Before!
 
 add files or paths to .gitignore to make git ignore them
