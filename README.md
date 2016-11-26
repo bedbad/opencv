@@ -2,8 +2,11 @@ Fall 2016
 CSE 2040 Group Project (Open CV)
 Members: Liandra, Abdul, Zhi, Ilya
 
+!Always Pull Before!
 
-### I don't know github readme format ###
+add files or paths to .gitignore to make git ignore them
+
+don't commit trash!
 
 0. Install git
 
