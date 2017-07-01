@@ -53,6 +53,8 @@ namespace cv
 
 //! @cond IGNORED
 
+CV_CPU_OPTIMIZATION_HAL_NAMESPACE_BEGIN
+
 #define CV_SIMD128 1
 #if defined(__aarch64__)
 #define CV_SIMD128_64F 1
@@ -276,7 +278,7 @@ struct v_float64x2
 };
 #endif
 
-#if defined (HAVE_FP16)
+#if CV_FP16
 // Workaround for old comiplers
 template <typename T> static inline int16x4_t vreinterpret_s16_f16(T a)
 { return (int16x4_t)a; }
@@ -773,7 +775,7 @@ OPENCV_HAL_IMPL_NEON_LOADSTORE_OP(v_float32x4, float, f32)
 OPENCV_HAL_IMPL_NEON_LOADSTORE_OP(v_float64x2, double, f64)
 #endif
 
-#if defined (HAVE_FP16)
+#if CV_FP16
 // Workaround for old comiplers
 inline v_float16x4 v_load_f16(const short* ptr)
 { return v_float16x4(vld1_f16(ptr)); }
@@ -812,6 +814,22 @@ OPENCV_HAL_IMPL_NEON_REDUCE_OP_4(v_int32x4, int32x2, int, min, min, s32)
 OPENCV_HAL_IMPL_NEON_REDUCE_OP_4(v_float32x4, float32x2, float, sum, add, f32)
 OPENCV_HAL_IMPL_NEON_REDUCE_OP_4(v_float32x4, float32x2, float, max, max, f32)
 OPENCV_HAL_IMPL_NEON_REDUCE_OP_4(v_float32x4, float32x2, float, min, min, f32)
+
+#define OPENCV_HAL_IMPL_NEON_POPCOUNT(_Tpvec, cast) \
+inline v_uint32x4 v_popcount(const _Tpvec& a) \
+{ \
+    uint8x16_t t = vcntq_u8(cast(a.val)); \
+    uint16x8_t t0 = vpaddlq_u8(t);  /* 16 -> 8 */ \
+    uint32x4_t t1 = vpaddlq_u16(t0); /* 8 -> 4 */ \
+    return v_uint32x4(t1); \
+}
+
+OPENCV_HAL_IMPL_NEON_POPCOUNT(v_uint8x16, OPENCV_HAL_NOP)
+OPENCV_HAL_IMPL_NEON_POPCOUNT(v_uint16x8, vreinterpretq_u8_u16)
+OPENCV_HAL_IMPL_NEON_POPCOUNT(v_uint32x4, vreinterpretq_u8_u32)
+OPENCV_HAL_IMPL_NEON_POPCOUNT(v_int8x16, vreinterpretq_u8_s8)
+OPENCV_HAL_IMPL_NEON_POPCOUNT(v_int16x8, vreinterpretq_u8_s16)
+OPENCV_HAL_IMPL_NEON_POPCOUNT(v_int32x4, vreinterpretq_u8_s32)
 
 inline int v_signmask(const v_uint8x16& a)
 {
@@ -1205,7 +1223,7 @@ inline v_float64x2 v_cvt_f64_high(const v_float32x4& a)
 }
 #endif
 
-#if defined (HAVE_FP16)
+#if CV_FP16
 inline v_float32x4 v_cvt_f32(const v_float16x4& a)
 {
     return v_float32x4(vcvt_f32_f16(a.val));
@@ -1222,10 +1240,12 @@ inline v_float16x4 v_cvt_f16(const v_float32x4& a)
 //! @brief Check CPU capability of SIMD operation
 static inline bool hasSIMD128()
 {
-    return checkHardwareSupport(CV_CPU_NEON);
+    return (CV_CPU_HAS_SUPPORT_NEON) ? true : false;
 }
 
 //! @}
+
+CV_CPU_OPTIMIZATION_HAL_NAMESPACE_END
 
 //! @endcond
 

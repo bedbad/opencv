@@ -50,15 +50,6 @@
 
 #define USE_ZLIB 1
 
-#ifdef __APPLE__
-#  include "TargetConditionals.h"
-#  if (defined TARGET_OS_IPHONE && TARGET_OS_IPHONE) || (defined TARGET_IPHONE_SIMULATOR && TARGET_IPHONE_SIMULATOR)
-#    undef USE_ZLIB
-#    define USE_ZLIB 0
-     typedef void* gzFile;
-#  endif
-#endif
-
 #if USE_ZLIB
 #  ifndef _LFS64_LARGEFILE
 #    define _LFS64_LARGEFILE 0
@@ -67,6 +58,8 @@
 #    define _FILE_OFFSET_BITS 0
 #  endif
 #  include <zlib.h>
+#else
+typedef void* gzFile;
 #endif
 
 /****************************************************************************************\
@@ -1474,6 +1467,26 @@ icvYMLParseValue( CvFileStorage* fs, char* ptr, CvFileNode* node,
         {
             ptr++;
             value_type |= CV_NODE_USER;
+        }
+        if ( d == '<') //support of full type heading from YAML 1.2
+        {
+            const char* yamlTypeHeading = "<tag:yaml.org,2002:";
+            const size_t headingLenght = strlen(yamlTypeHeading);
+
+            char* typeEndPtr = ++ptr;
+
+            do d = *++typeEndPtr;
+            while( cv_isprint(d) && d != ' ' && d != '>' );
+
+            if ( d == '>' && (size_t)(typeEndPtr - ptr) > headingLenght )
+            {
+                if ( memcmp(ptr, yamlTypeHeading, headingLenght) == 0 )
+                {
+                    value_type |= CV_NODE_USER;
+                    *typeEndPtr = ' ';
+                    ptr += headingLenght - 1;
+                }
+            }
         }
 
         endptr = ptr++;
@@ -4894,7 +4907,7 @@ cvReadRawDataSlice( const CvFileStorage* fs, CvSeqReader* reader,
 {
     char* data0 = (char*)_data;
     int fmt_pairs[CV_FS_MAX_FMT_PAIRS*2], k = 0, fmt_pair_count;
-    int i = 0, offset = 0, count = 0;
+    int i = 0, count = 0;
 
     CV_CHECK_FILE_STORAGE( fs );
 
@@ -4905,9 +4918,11 @@ cvReadRawDataSlice( const CvFileStorage* fs, CvSeqReader* reader,
         CV_Error( CV_StsBadSize, "The readed sequence is a scalar, thus len must be 1" );
 
     fmt_pair_count = icvDecodeFormat( dt, fmt_pairs, CV_FS_MAX_FMT_PAIRS );
+    size_t step = ::icvCalcStructSize(dt, 0);
 
     for(;;)
     {
+        int offset = 0;
         for( k = 0; k < fmt_pair_count; k++ )
         {
             int elem_type = fmt_pairs[k*2+1];
@@ -5025,6 +5040,7 @@ cvReadRawDataSlice( const CvFileStorage* fs, CvSeqReader* reader,
 
             offset = (int)(data - data0);
         }
+        data0 += step;
     }
 
 end_loop:
@@ -7263,14 +7279,7 @@ void write(FileStorage& fs, const String& objname, const std::vector<KeyPoint>& 
     int i, npoints = (int)keypoints.size();
     for( i = 0; i < npoints; i++ )
     {
-        const KeyPoint& kpt = keypoints[i];
-        cv::write(fs, kpt.pt.x);
-        cv::write(fs, kpt.pt.y);
-        cv::write(fs, kpt.size);
-        cv::write(fs, kpt.angle);
-        cv::write(fs, kpt.response);
-        cv::write(fs, kpt.octave);
-        cv::write(fs, kpt.class_id);
+        write(fs, keypoints[i]);
     }
 }
 
@@ -7295,11 +7304,7 @@ void write(FileStorage& fs, const String& objname, const std::vector<DMatch>& ma
     int i, n = (int)matches.size();
     for( i = 0; i < n; i++ )
     {
-        const DMatch& m = matches[i];
-        cv::write(fs, m.queryIdx);
-        cv::write(fs, m.trainIdx);
-        cv::write(fs, m.imgIdx);
-        cv::write(fs, m.distance);
+        write(fs, matches[i]);
     }
 }
 
@@ -7677,7 +7682,7 @@ std::string base64::make_base64_header(const char * dt)
 bool base64::read_base64_header(std::vector<char> const & header, std::string & dt)
 {
     std::istringstream iss(header.data());
-    return static_cast<bool>(iss >> dt);
+    return !!(iss >> dt);//the "std::basic_ios::operator bool" differs between C++98 and C++11. The "double not" syntax is portable and covers both cases with equivalent meaning
 }
 
 /****************************************************************************

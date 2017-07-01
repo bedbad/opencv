@@ -14,7 +14,8 @@ class_ignore_list = (
     #core
     "FileNode", "FileStorage", "KDTree", "KeyPoint", "DMatch",
     #features2d
-    "SimpleBlobDetector"
+    "SimpleBlobDetector",
+    "CirclesGridFinderParameters"
 )
 
 const_ignore_list = (
@@ -207,6 +208,7 @@ type_dict = {
     "vector_KeyPoint" : { "j_type" : "MatOfKeyPoint", "jn_type" : "long", "jni_type" : "jlong", "jni_var" : "std::vector<KeyPoint> %(n)s", "suffix" : "J" },
     "vector_DMatch"   : { "j_type" : "MatOfDMatch", "jn_type" : "long", "jni_type" : "jlong", "jni_var" : "std::vector<DMatch> %(n)s", "suffix" : "J" },
     "vector_Rect"     : { "j_type" : "MatOfRect",   "jn_type" : "long", "jni_type" : "jlong", "jni_var" : "std::vector<Rect> %(n)s", "suffix" : "J" },
+    "vector_Rect2d"     : { "j_type" : "MatOfRect2d",   "jn_type" : "long", "jni_type" : "jlong", "jni_var" : "std::vector<Rect2d> %(n)s", "suffix" : "J" },
     "vector_uchar"    : { "j_type" : "MatOfByte",   "jn_type" : "long", "jni_type" : "jlong", "jni_var" : "std::vector<uchar> %(n)s", "suffix" : "J" },
     "vector_char"     : { "j_type" : "MatOfByte",   "jn_type" : "long", "jni_type" : "jlong", "jni_var" : "std::vector<char> %(n)s", "suffix" : "J" },
     "vector_int"      : { "j_type" : "MatOfInt",    "jn_type" : "long", "jni_type" : "jlong", "jni_var" : "std::vector<int> %(n)s", "suffix" : "J" },
@@ -261,6 +263,9 @@ type_dict = {
     "Rect"    : { "j_type" : "Rect",  "jn_args" : (("int", ".x"), ("int", ".y"), ("int", ".width"), ("int", ".height")),
                   "jni_var" : "Rect %(n)s(%(n)s_x, %(n)s_y, %(n)s_width, %(n)s_height)", "jni_type" : "jdoubleArray",
                   "suffix" : "IIII"},
+    "Rect2d"    : { "j_type" : "Rect2d",  "jn_args" : (("double", ".x"), ("double", ".y"), ("double", ".width"), ("double", ".height")),
+    "jni_var" : "Rect %(n)s(%(n)s_x, %(n)s_y, %(n)s_width, %(n)s_height)", "jni_type" : "jdoubleArray",
+        "suffix" : "DDDD"},
     "Size"    : { "j_type" : "Size",  "jn_args" : (("double", ".width"), ("double", ".height")),
                   "jni_var" : "Size %(n)s((int)%(n)s_width, (int)%(n)s_height)", "jni_type" : "jdoubleArray",
                   "suffix" : "DD"},
@@ -644,6 +649,7 @@ public class $jname {
     protected final long nativeObj;
     protected $jname(long addr) { nativeObj = addr; }
 
+    public long getNativeObjAddr() { return nativeObj; }
 """
 
 T_JAVA_START_MODULE = """
@@ -825,7 +831,7 @@ class ClassInfo(GeneralInfo):
                 j_type = type_dict[ctype]['j_type']
             elif ctype in ("Algorithm"):
                 j_type = ctype
-            if j_type in ( "CvType", "Mat", "Point", "Point3", "Range", "Rect", "RotatedRect", "Scalar", "Size", "TermCriteria", "Algorithm" ):
+            if j_type in ( "CvType", "Mat", "Point", "Point3", "Range", "Rect", "Rect2d", "RotatedRect", "Scalar", "Size", "TermCriteria", "Algorithm" ):
                 self.imports.add("org.opencv.core." + j_type)
             if j_type == 'String':
                 self.imports.add("java.lang.String")
@@ -858,10 +864,13 @@ class ClassInfo(GeneralInfo):
         self.j_code = StringIO()
         self.jn_code = StringIO()
         self.cpp_code = StringIO();
-        if self.name != Module:
-            self.j_code.write(T_JAVA_START_INHERITED if self.base else T_JAVA_START_ORPHAN)
+        if self.base:
+            self.j_code.write(T_JAVA_START_INHERITED)
         else:
-            self.j_code.write(T_JAVA_START_MODULE)
+            if self.name != Module:
+                self.j_code.write(T_JAVA_START_ORPHAN)
+            else:
+                self.j_code.write(T_JAVA_START_MODULE)
         # misc handling
         if self.name == 'Core':
             self.imports.add("java.lang.String")
@@ -958,11 +967,11 @@ class JavaWrapperGenerator(object):
             logging.info('ignored: %s', classinfo)
             return
         name = classinfo.name
-        if self.isWrapped(name):
+        if self.isWrapped(name) and not classinfo.base:
             logging.warning('duplicated: %s', classinfo)
             return
         self.classes[name] = classinfo
-        if name in type_dict:
+        if name in type_dict and not classinfo.base:
             logging.warning('duplicated: %s', classinfo)
             return
         type_dict[name] = \
@@ -996,8 +1005,8 @@ class JavaWrapperGenerator(object):
             classinfo.addImports(classinfo.base)
         type_dict["Ptr_"+name] = \
             { "j_type" : classinfo.jname,
-              "jn_type" : "long", "jn_args" : (("__int64", ".nativeObj"),),
-              "jni_name" : "Ptr<"+classinfo.fullName(isCPP=True)+">(("+classinfo.fullName(isCPP=True)+"*)%(n)s_nativeObj)", "jni_type" : "jlong",
+              "jn_type" : "long", "jn_args" : (("__int64", ".getNativeObjAddr()"),),
+              "jni_name" : "*((Ptr<"+classinfo.fullName(isCPP=True)+">*)%(n)s_nativeObj)", "jni_type" : "jlong",
               "suffix" : "J" }
         logging.info('ok: class %s, name: %s, base: %s', classinfo, name, classinfo.base)
 
@@ -1220,7 +1229,7 @@ class JavaWrapperGenerator(object):
                     if "I" in a.out or not a.out or self.isWrapped(a.ctype): # input arg, pass by primitive fields
                         for f in fields:
                             jn_args.append ( ArgInfo([ f[0], a.name + f[1], "", [], "" ]) )
-                            jni_args.append( ArgInfo([ f[0], a.name + f[1].replace(".","_").replace("[","").replace("]",""), "", [], "" ]) )
+                            jni_args.append( ArgInfo([ f[0], a.name + f[1].replace(".","_").replace("[","").replace("]","").replace("_getNativeObjAddr()","_nativeObj"), "", [], "" ]) )
                     if a.out and not self.isWrapped(a.ctype): # out arg, pass as double[]
                         jn_args.append ( ArgInfo([ "double[]", "%s_out" % a.name, "", [], "" ]) )
                         jni_args.append ( ArgInfo([ "double[]", "%s_out" % a.name, "", [], "" ]) )
@@ -1268,7 +1277,7 @@ class JavaWrapperGenerator(object):
                 "    private static native $type $name($args);\n").substitute(\
                 type = type_dict[fi.ctype].get("jn_type", "double[]"), \
                 name = fi.jname + '_' + str(suffix_counter), \
-                args = ", ".join(["%s %s" % (type_dict[a.ctype]["jn_type"], a.name.replace(".","_").replace("[","").replace("]","")) for a in jn_args])
+                args = ", ".join(["%s %s" % (type_dict[a.ctype]["jn_type"], a.name.replace(".","_").replace("[","").replace("]","").replace("_getNativeObjAddr()","_nativeObj")) for a in jn_args])
             ) );
 
             # java part:
@@ -1516,7 +1525,7 @@ JNIEXPORT $rtype JNICALL Java_org_opencv_${module}_${clazz}_$fname
                 ci.jn_code.write( ManualFuncs[ci.name][func]["jn_code"] )
                 ci.cpp_code.write( ManualFuncs[ci.name][func]["cpp_code"] )
 
-        if ci.name != self.Module:
+        if ci.name != self.Module or ci.base:
             # finalize()
             ci.j_code.write(
 """
@@ -1567,7 +1576,7 @@ JNIEXPORT void JNICALL Java_org_opencv_%(module)s_%(j_cls)s_delete
         # if parents are smart (we hope) then children are!
         # if not we believe the class is smart if it has "create" method
         ci.smart = False
-        if ci.base:
+        if ci.base or ci.name == 'Algorithm':
             ci.smart = True
         else:
             for fi in ci.methods:
