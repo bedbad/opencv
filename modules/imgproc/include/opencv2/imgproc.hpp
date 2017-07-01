@@ -2181,6 +2181,9 @@ kernel center.
 @param borderValue Border value in case of a constant border. The default value has a special
 meaning.
 @sa  dilate, erode, getStructuringElement
+@note The number of iterations is the number of times erosion or dilatation operation will be applied.
+For instance, an opening operation (#MORPH_OPEN) with two iterations is equivalent to apply
+successively: erode -> erode -> dilate -> dilate (and not erode -> dilate -> erode -> dilate).
  */
 CV_EXPORTS_W void morphologyEx( InputArray src, OutputArray dst,
                                 int op, InputArray kernel,
@@ -3703,8 +3706,10 @@ image with 4 or 8 way connectivity - returns N, the total number of labels [0, N
 represents the background label. ltype specifies the output label image type, an important
 consideration based on the total number of labels or alternatively the total number of pixels in
 the source image. ccltype specifies the connected components labeling algorithm to use, currently
-Grana's (BBDT) and Wu's (SAUF) algorithms are supported, see the cv::ConnectedComponentsAlgorithmsTypes
+Grana (BBDT) and Wu's (SAUF) algorithms are supported, see the cv::ConnectedComponentsAlgorithmsTypes
 for details. Note that SAUF algorithm forces a row major ordering of labels while BBDT does not.
+This function uses parallel version of both Grana and Wu's algorithms if at least one allowed
+parallel framework is enabled and if the rows of the image are at least twice the number returned by getNumberOfCPUs.
 
 @param image the 8-bit single-channel image to be labeled
 @param labels destination labeled image
@@ -3735,7 +3740,8 @@ consideration based on the total number of labels or alternatively the total num
 the source image. ccltype specifies the connected components labeling algorithm to use, currently
 Grana's (BBDT) and Wu's (SAUF) algorithms are supported, see the cv::ConnectedComponentsAlgorithmsTypes
 for details. Note that SAUF algorithm forces a row major ordering of labels while BBDT does not.
-
+This function uses parallel version of both Grana and Wu's algorithms (statistics included) if at least one allowed
+parallel framework is enabled and if the rows of the image are at least twice the number returned by getNumberOfCPUs.
 
 @param image the 8-bit single-channel image to be labeled
 @param labels destination labeled image
@@ -4133,8 +4139,16 @@ enum ColormapTypes
 @param src The source image, grayscale or colored of type CV_8UC1 or CV_8UC3.
 @param dst The result is the colormapped source image. Note: Mat::create is called on dst.
 @param colormap The colormap to apply, see cv::ColormapTypes
- */
+*/
 CV_EXPORTS_W void applyColorMap(InputArray src, OutputArray dst, int colormap);
+
+/** @brief Applies a user colormap on a given image.
+
+@param src The source image, grayscale or colored of type CV_8UC1 or CV_8UC3.
+@param dst The result is the colormapped source image. Note: Mat::create is called on dst.
+@param userColor The colormap to apply of type CV_8UC1 or CV_8UC3 and size 256
+*/
+CV_EXPORTS_W void applyColorMap(InputArray src, OutputArray dst, InputArray userColor);
 
 //! @} imgproc_colormap
 

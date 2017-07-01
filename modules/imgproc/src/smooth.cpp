@@ -42,6 +42,7 @@
 //M*/
 
 #include "precomp.hpp"
+#include "opencv2/core/hal/intrin.hpp"
 #include "opencl_kernels_imgproc.hpp"
 
 #include "opencv2/core/openvx/ovx_defs.hpp"
@@ -467,6 +468,8 @@ template<>
 struct ColumnSum<ushort, uchar> :
 public BaseColumnFilter
 {
+    enum { SHIFT = 23 };
+
     ColumnSum( int _ksize, int _anchor, double _scale ) :
     BaseColumnFilter()
     {
@@ -479,7 +482,7 @@ public BaseColumnFilter
         if( scale != 1 )
         {
             int d = cvRound(1./scale);
-            double scalef = ((double)(1 << 16))/d;
+            double scalef = ((double)(1 << SHIFT))/d;
             divScale = cvFloor(scalef);
             scalef -= divScale;
             divDelta = d/2;
@@ -554,35 +557,43 @@ public BaseColumnFilter
             if( haveScale )
             {
                 int i = 0;
-    #if CV_SSE2
-                if(haveSSE2)
+            #if CV_SIMD128
+                v_uint32x4 ds4 = v_setall_u32((unsigned)ds);
+                v_uint16x8 dd8 = v_setall_u16((ushort)dd);
+
+                for( ; i <= width-16; i+=16 )
                 {
-                    __m128i ds8 = _mm_set1_epi16((short)ds);
-                    __m128i dd8 = _mm_set1_epi16((short)dd);
+                    v_uint16x8 _sm0 = v_load(Sm + i);
+                    v_uint16x8 _sm1 = v_load(Sm + i + 8);
 
-                    for( ; i <= width-16; i+=16 )
-                    {
-                        __m128i _sm0  = _mm_loadu_si128((const __m128i*)(Sm+i));
-                        __m128i _sm1  = _mm_loadu_si128((const __m128i*)(Sm+i+8));
+                    v_uint16x8 _s0 = v_add_wrap(v_load(SUM + i), v_load(Sp + i));
+                    v_uint16x8 _s1 = v_add_wrap(v_load(SUM + i + 8), v_load(Sp + i + 8));
 
-                        __m128i _s0  = _mm_add_epi16(_mm_loadu_si128((const __m128i*)(SUM+i)),
-                                                     _mm_loadu_si128((const __m128i*)(Sp+i)));
-                        __m128i _s1  = _mm_add_epi16(_mm_loadu_si128((const __m128i*)(SUM+i+8)),
-                                                     _mm_loadu_si128((const __m128i*)(Sp+i+8)));
-                        __m128i _s2 = _mm_mulhi_epu16(_mm_adds_epu16(_s0, dd8), ds8);
-                        __m128i _s3 = _mm_mulhi_epu16(_mm_adds_epu16(_s1, dd8), ds8);
-                        _s0 = _mm_sub_epi16(_s0, _sm0);
-                        _s1 = _mm_sub_epi16(_s1, _sm1);
-                        _mm_storeu_si128((__m128i*)(D+i), _mm_packus_epi16(_s2, _s3));
-                        _mm_storeu_si128((__m128i*)(SUM+i), _s0);
-                        _mm_storeu_si128((__m128i*)(SUM+i+8), _s1);
-                    }
+                    v_uint32x4 _s00, _s01, _s10, _s11;
+
+                    v_expand(_s0 + dd8, _s00, _s01);
+                    v_expand(_s1 + dd8, _s10, _s11);
+
+                    _s00 = v_shr<SHIFT>(_s00*ds4);
+                    _s01 = v_shr<SHIFT>(_s01*ds4);
+                    _s10 = v_shr<SHIFT>(_s10*ds4);
+                    _s11 = v_shr<SHIFT>(_s11*ds4);
+
+                    v_int16x8 r0 = v_pack(v_reinterpret_as_s32(_s00), v_reinterpret_as_s32(_s01));
+                    v_int16x8 r1 = v_pack(v_reinterpret_as_s32(_s10), v_reinterpret_as_s32(_s11));
+
+                    _s0 = v_sub_wrap(_s0, _sm0);
+                    _s1 = v_sub_wrap(_s1, _sm1);
+
+                    v_store(D + i, v_pack_u(r0, r1));
+                    v_store(SUM + i, _s0);
+                    v_store(SUM + i + 8, _s1);
                 }
-    #endif
+            #endif
                 for( ; i < width; i++ )
                 {
                     int s0 = SUM[i] + Sp[i];
-                    D[i] = (uchar)((s0 + dd)*ds >> 16);
+                    D[i] = (uchar)((s0 + dd)*ds >> SHIFT);
                     SUM[i] = (ushort)(s0 - Sm[i]);
                 }
             }
@@ -1639,26 +1650,24 @@ cv::Ptr<cv::FilterEngine> cv::createBoxFilter( int srcType, int dstType, Size ks
 #ifdef HAVE_OPENVX
 namespace cv
 {
+    namespace ovx {
+        template <> inline bool skipSmallImages<VX_KERNEL_BOX_3x3>(int w, int h) { return w*h < 640 * 480; }
+    }
     static bool openvx_boxfilter(InputArray _src, OutputArray _dst, int ddepth,
                                  Size ksize, Point anchor,
                                  bool normalize, int borderType)
     {
-        int stype = _src.type();
         if (ddepth < 0)
             ddepth = CV_8UC1;
-        if (stype != CV_8UC1 || (ddepth != CV_8U && ddepth != CV_16S) ||
-            (anchor.x >= 0 && anchor.x != ksize.width / 2) ||
-            (anchor.y >= 0 && anchor.y != ksize.height / 2) ||
-            ksize.width % 2 != 1 || ksize.height % 2 != 1 ||
-            ksize.width < 3 || ksize.height < 3)
+        if (_src.type() != CV_8UC1 || ddepth != CV_8U || !normalize ||
+            _src.cols() < 3 || _src.rows() < 3 ||
+            ksize.width != 3 || ksize.height != 3 ||
+            (anchor.x >= 0 && anchor.x != 1) ||
+            (anchor.y >= 0 && anchor.y != 1) ||
+            ovx::skipSmallImages<VX_KERNEL_BOX_3x3>(_src.cols(), _src.rows()))
             return false;
 
         Mat src = _src.getMat();
-        _dst.create(src.size(), CV_MAKETYPE(ddepth, 1));
-        Mat dst = _dst.getMat();
-
-        if (src.cols < ksize.width || src.rows < ksize.height)
-            return false;
 
         if ((borderType & BORDER_ISOLATED) == 0 && src.isSubmatrix())
             return false; //Process isolated borders only
@@ -1675,11 +1684,12 @@ namespace cv
             return false;
         }
 
+        _dst.create(src.size(), CV_8UC1);
+        Mat dst = _dst.getMat();
+
         try
         {
             ivx::Context ctx = ovx::getOpenVXContext();
-            if ((vx_size)(ksize.width) > ctx.convolutionMaxDimension() || (vx_size)(ksize.height) > ctx.convolutionMaxDimension())
-                return false;
 
             Mat a;
             if (dst.data != src.data)
@@ -1690,34 +1700,14 @@ namespace cv
             ivx::Image
                 ia = ivx::Image::createFromHandle(ctx, VX_DF_IMAGE_U8,
                                                   ivx::Image::createAddressing(a.cols, a.rows, 1, (vx_int32)(a.step)), a.data),
-                ib = ivx::Image::createFromHandle(ctx, ddepth == CV_16S ? VX_DF_IMAGE_S16 : VX_DF_IMAGE_U8,
-                                                  ivx::Image::createAddressing(dst.cols, dst.rows, ddepth == CV_16S ? 2 : 1, (vx_int32)(dst.step)), dst.data);
+                ib = ivx::Image::createFromHandle(ctx, VX_DF_IMAGE_U8,
+                                                  ivx::Image::createAddressing(dst.cols, dst.rows, 1, (vx_int32)(dst.step)), dst.data);
 
             //ATTENTION: VX_CONTEXT_IMMEDIATE_BORDER attribute change could lead to strange issues in multi-threaded environments
             //since OpenVX standart says nothing about thread-safety for now
             ivx::border_t prevBorder = ctx.immediateBorder();
             ctx.setImmediateBorder(border, (vx_uint8)(0));
-            if (ddepth == CV_8U && ksize.width == 3 && ksize.height == 3 && normalize)
-            {
-                ivx::IVX_CHECK_STATUS(vxuBox3x3(ctx, ia, ib));
-            }
-            else
-            {
-#if VX_VERSION <= VX_VERSION_1_0
-                if (ctx.vendorID() == VX_ID_KHRONOS && ((vx_size)(src.cols) <= ctx.convolutionMaxDimension() || (vx_size)(src.rows) <= ctx.convolutionMaxDimension()))
-                {
-                    ctx.setImmediateBorder(prevBorder);
-                    return false;
-                }
-#endif
-                Mat convData(ksize, CV_16SC1);
-                convData = normalize ? (1 << 15) / (ksize.width * ksize.height) : 1;
-                ivx::Convolution cnv = ivx::Convolution::create(ctx, convData.cols, convData.rows);
-                cnv.copyFrom(convData);
-                if (normalize)
-                    cnv.setScale(1 << 15);
-                ivx::IVX_CHECK_STATUS(vxuConvolve(ctx, ia, cnv, ib));
-            }
+            ivx::IVX_CHECK_STATUS(vxuBox3x3(ctx, ia, ib));
             ctx.setImmediateBorder(prevBorder);
         }
         catch (ivx::RuntimeError & e)
@@ -2170,10 +2160,12 @@ static bool ocl_GaussianBlur_8UC1(InputArray _src, OutputArray _dst, Size ksize,
 
 #ifdef HAVE_OPENVX
 
+namespace ovx {
+    template <> inline bool skipSmallImages<VX_KERNEL_GAUSSIAN_3x3>(int w, int h) { return w*h < 320 * 240; }
+}
 static bool openvx_gaussianBlur(InputArray _src, OutputArray _dst, Size ksize,
                                 double sigma1, double sigma2, int borderType)
 {
-    int stype = _src.type();
     if (sigma2 <= 0)
         sigma2 = sigma1;
     // automatic detection of kernel size from sigma
@@ -2182,19 +2174,20 @@ static bool openvx_gaussianBlur(InputArray _src, OutputArray _dst, Size ksize,
     if (ksize.height <= 0 && sigma2 > 0)
         ksize.height = cvRound(sigma2*6 + 1) | 1;
 
-    if (stype != CV_8UC1 ||
-        ksize.width < 3 || ksize.height < 3 ||
-        ksize.width % 2 != 1 || ksize.height % 2 != 1)
+    if (_src.type() != CV_8UC1 ||
+        _src.cols() < 3 || _src.rows() < 3 ||
+        ksize.width != 3 || ksize.height != 3)
         return false;
 
     sigma1 = std::max(sigma1, 0.);
     sigma2 = std::max(sigma2, 0.);
 
+    if (!(sigma1 == 0.0 || (sigma1 - 0.8) < DBL_EPSILON) || !(sigma2 == 0.0 || (sigma2 - 0.8) < DBL_EPSILON) ||
+        ovx::skipSmallImages<VX_KERNEL_GAUSSIAN_3x3>(_src.cols(), _src.rows()))
+        return false;
+
     Mat src = _src.getMat();
     Mat dst = _dst.getMat();
-
-    if (src.cols < ksize.width || src.rows < ksize.height)
-        return false;
 
     if ((borderType & BORDER_ISOLATED) == 0 && src.isSubmatrix())
         return false; //Process isolated borders only
@@ -2214,8 +2207,6 @@ static bool openvx_gaussianBlur(InputArray _src, OutputArray _dst, Size ksize,
     try
     {
         ivx::Context ctx = ovx::getOpenVXContext();
-        if ((vx_size)(ksize.width) > ctx.convolutionMaxDimension() || (vx_size)(ksize.height) > ctx.convolutionMaxDimension())
-            return false;
 
         Mat a;
         if (dst.data != src.data)
@@ -2233,26 +2224,7 @@ static bool openvx_gaussianBlur(InputArray _src, OutputArray _dst, Size ksize,
         //since OpenVX standart says nothing about thread-safety for now
         ivx::border_t prevBorder = ctx.immediateBorder();
         ctx.setImmediateBorder(border, (vx_uint8)(0));
-        if (ksize.width == 3 && ksize.height == 3 && (sigma1 == 0.0 || (sigma1 - 0.8) < DBL_EPSILON) && (sigma2 == 0.0 || (sigma2 - 0.8) < DBL_EPSILON))
-        {
-            ivx::IVX_CHECK_STATUS(vxuGaussian3x3(ctx, ia, ib));
-        }
-        else
-        {
-#if VX_VERSION <= VX_VERSION_1_0
-            if (ctx.vendorID() == VX_ID_KHRONOS && ((vx_size)(a.cols) <= ctx.convolutionMaxDimension() || (vx_size)(a.rows) <= ctx.convolutionMaxDimension()))
-            {
-                ctx.setImmediateBorder(prevBorder);
-                return false;
-            }
-#endif
-            Mat convData;
-            cv::Mat(cv::getGaussianKernel(ksize.height, sigma2)*cv::getGaussianKernel(ksize.width, sigma1).t()).convertTo(convData, CV_16SC1, (1 << 15));
-            ivx::Convolution cnv = ivx::Convolution::create(ctx, convData.cols, convData.rows);
-            cnv.copyFrom(convData);
-            cnv.setScale(1 << 15);
-            ivx::IVX_CHECK_STATUS(vxuConvolve(ctx, ia, cnv, ib));
-        }
+        ivx::IVX_CHECK_STATUS(vxuGaussian3x3(ctx, ia, ib));
         ctx.setImmediateBorder(prevBorder);
     }
     catch (ivx::RuntimeError & e)
@@ -2269,6 +2241,54 @@ static bool openvx_gaussianBlur(InputArray _src, OutputArray _dst, Size ksize,
 #endif
 
 #ifdef HAVE_IPP
+#define IPP_DISABLE_FILTERING_INMEM_PARTIAL 1 // IW 2017u2 has bug which doesn't allow use of partial inMem with tiling
+#define IPP_GAUSSIANBLUR_PARALLEL 1
+
+#ifdef HAVE_IPP_IW
+
+class ipp_gaussianBlurParallel: public ParallelLoopBody
+{
+public:
+    ipp_gaussianBlurParallel(::ipp::IwiImage &src, ::ipp::IwiImage &dst, int kernelSize, float sigma, ::ipp::IwiBorderType &border, bool *pOk):
+        m_src(src), m_dst(dst), m_kernelSize(kernelSize), m_sigma(sigma), m_border(border), m_pOk(pOk) {
+        *m_pOk = true;
+    }
+    ~ipp_gaussianBlurParallel()
+    {
+    }
+
+    virtual void operator() (const Range& range) const
+    {
+        CV_INSTRUMENT_REGION_IPP()
+
+        if(!*m_pOk)
+            return;
+
+        try
+        {
+            ::ipp::IwiRoi roi = ::ipp::IwiRect(0, range.start, m_dst.m_size.width, range.end - range.start);
+            CV_INSTRUMENT_FUN_IPP(::ipp::iwiFilterGaussian, &m_src, &m_dst, m_kernelSize, m_sigma, m_border, &roi);
+        }
+        catch(::ipp::IwException e)
+        {
+            *m_pOk = false;
+            return;
+        }
+    }
+private:
+    ::ipp::IwiImage &m_src;
+    ::ipp::IwiImage &m_dst;
+
+    int m_kernelSize;
+    float m_sigma;
+    ::ipp::IwiBorderType &m_border;
+
+    volatile bool *m_pOk;
+    const ipp_gaussianBlurParallel& operator= (const ipp_gaussianBlurParallel&);
+};
+
+#endif
+
 static bool ipp_GaussianBlur(InputArray _src, OutputArray _dst, Size ksize,
                    double sigma1, double sigma2, int borderType )
 {
@@ -2300,7 +2320,23 @@ static bool ipp_GaussianBlur(InputArray _src, OutputArray _dst, Size ksize,
         if(!ippBorder.m_borderType)
             return false;
 
-        CV_INSTRUMENT_FUN_IPP(::ipp::iwiFilterGaussian, &iwSrc, &iwDst, ksize.width, (float)sigma1, ippBorder);
+        const bool disableThreading = IPP_DISABLE_FILTERING_INMEM_PARTIAL &&
+            ((ippBorder.m_borderFlags)&ippBorderInMem) && ((ippBorder.m_borderFlags)&ippBorderInMem) != ippBorderInMem;
+        const int threads = ippiSuggestThreadsNum(iwDst, 2);
+        if(!disableThreading && IPP_GAUSSIANBLUR_PARALLEL && threads > 1) {
+            bool ok;
+            ipp_gaussianBlurParallel invoker(iwSrc, iwDst, ksize.width, (float) sigma1, ippBorder, &ok);
+
+            if(!ok)
+                return false;
+            const Range range(0, (int) iwDst.m_size.height);
+            parallel_for_(range, invoker, threads*4);
+
+            if(!ok)
+                return false;
+        } else {
+            CV_INSTRUMENT_FUN_IPP(::ipp::iwiFilterGaussian, &iwSrc, &iwDst, ksize.width, (float) sigma1, ippBorder);
+        }
     }
     catch (::ipp::IwException ex)
     {
@@ -2471,6 +2507,7 @@ medianBlur_8u_O1( const Mat& _src, Mat& _dst, int ksize )
     h_fine[ 16 * (n*(16*c+(x>>4)) + j) + (x & 0xF) ] op
 
     int cn = _dst.channels(), m = _dst.rows, r = (ksize-1)/2;
+    CV_Assert(cn > 0 && cn <= 4);
     size_t sstep = _src.step, dstep = _dst.step;
     Histogram CV_DECL_ALIGNED(16) H[4];
     HT CV_DECL_ALIGNED(16) luc[4][16];
@@ -2676,6 +2713,7 @@ medianBlur_8u_Om( const Mat& _src, Mat& _dst, int m )
     int     src_step = (int)_src.step, dst_step = (int)_dst.step;
     int     cn = _src.channels();
     const uchar*  src_max = src + size.height*src_step;
+    CV_Assert(cn > 0 && cn <= 4);
 
     #define UPDATE_ACC01( pix, cn, op ) \
     {                                   \
@@ -3275,6 +3313,9 @@ static bool ocl_medianFilter(InputArray _src, OutputArray _dst, int m)
 #ifdef HAVE_OPENVX
 namespace cv
 {
+    namespace ovx {
+        template <> inline bool skipSmallImages<VX_KERNEL_MEDIAN_3x3>(int w, int h) { return w*h < 1280 * 720; }
+    }
     static bool openvx_medianFilter(InputArray _src, OutputArray _dst, int ksize)
     {
         if (_src.type() != CV_8UC1 || _dst.type() != CV_8U
@@ -3286,6 +3327,14 @@ namespace cv
 
         Mat src = _src.getMat();
         Mat dst = _dst.getMat();
+
+        if (
+#ifdef VX_VERSION_1_1
+             ksize != 3 ? ovx::skipSmallImages<VX_KERNEL_NON_LINEAR_FILTER>(src.cols, src.rows) :
+#endif
+             ovx::skipSmallImages<VX_KERNEL_MEDIAN_3x3>(src.cols, src.rows)
+           )
+            return false;
 
         try
         {
@@ -4272,24 +4321,23 @@ static bool ipp_bilateralFilter(Mat &src, Mat &dst, int d, double sigmaColor, do
         if(!ippBorder.m_borderType)
             return false;
 
-        // IW 2017u2 has bug which doesn't allow use of partial inMem with tiling
-        if((((ippBorder.m_borderFlags)&ippBorderInMem) && ((ippBorder.m_borderFlags)&ippBorderInMem) != ippBorderInMem))
-            return false;
+        const bool disableThreading = IPP_DISABLE_FILTERING_INMEM_PARTIAL &&
+            ((ippBorder.m_borderFlags)&ippBorderInMem) && ((ippBorder.m_borderFlags)&ippBorderInMem) != ippBorderInMem;
+        const int threads = ippiSuggestThreadsNum(iwDst, 2);
+        if(!disableThreading && IPP_BILATERAL_PARALLEL && threads > 1) {
+            bool  ok      = true;
+            Range range(0, (int)iwDst.m_size.height);
+            ipp_bilateralFilterParallel invoker(iwSrc, iwDst, radius, valSquareSigma, posSquareSigma, ippBorder, &ok);
+            if(!ok)
+                return false;
 
-        bool  ok      = true;
-        int   threads = ippiSuggestThreadsNum(iwDst, 2);
-        Range range(0, (int)iwDst.m_size.height);
-        ipp_bilateralFilterParallel invoker(iwSrc, iwDst, radius, valSquareSigma, posSquareSigma, ippBorder, &ok);
-        if(!ok)
-            return false;
-
-        if(IPP_BILATERAL_PARALLEL && threads > 1)
             parallel_for_(range, invoker, threads*4);
-        else
-            invoker(range);
 
-        if(!ok)
-            return false;
+            if(!ok)
+                return false;
+        } else {
+            CV_INSTRUMENT_FUN_IPP(::ipp::iwiFilterBilateral, &iwSrc, &iwDst, radius, valSquareSigma, posSquareSigma, ippiFilterBilateralGauss, ippDistNormL1, ippBorder);
+        }
     }
     catch (::ipp::IwException)
     {
