@@ -42,6 +42,7 @@
 #include "precomp.hpp"
 #include <list>
 #include <map>
+#include <deque>
 #include <string>
 #include <sstream>
 #include <iostream> // std::cerr
@@ -1962,7 +1963,7 @@ KernelArg KernelArg::Constant(const Mat& m)
 struct Kernel::Impl
 {
     Impl(const char* kname, const Program& prog) :
-        refcount(1), e(0), nu(0)
+        refcount(1), isInProgress(false), nu(0)
     {
         cl_program ph = (cl_program)prog.ptr();
         cl_int retval = 0;
@@ -1983,7 +1984,10 @@ struct Kernel::Impl
             if( u[i] )
             {
                 if( CV_XADD(&u[i]->urefcount, -1) == 1 )
+                {
+                    u[i]->flags |= UMatData::ASYNC_CLEANUP;
                     u[i]->currAllocator->deallocate(u[i]);
+                }
                 u[i] = 0;
             }
         nu = 0;
@@ -2005,11 +2009,15 @@ struct Kernel::Impl
         images.push_back(image);
     }
 
-    void finit()
+    void finit(cl_event e)
     {
+        CV_UNUSED(e);
+#if 0
+        printf("event::callback(%p)\n", e); fflush(stdout);
+#endif
         cleanupUMats();
         images.clear();
-        if(e) { clReleaseEvent(e); e = 0; }
+        isInProgress = false;
         release();
     }
 
@@ -2025,9 +2033,9 @@ struct Kernel::Impl
     cv::String name;
 #endif
     cl_kernel handle;
-    cl_event e;
     enum { MAX_ARRS = 16 };
     UMatData* u[MAX_ARRS];
+    bool isInProgress;
     int nu;
     std::list<Image2D> images;
     bool haveTempDstUMats;
@@ -2037,9 +2045,9 @@ struct Kernel::Impl
 
 extern "C" {
 
-static void CL_CALLBACK oclCleanupCallback(cl_event, cl_int, void *p)
+static void CL_CALLBACK oclCleanupCallback(cl_event e, cl_int, void *p)
 {
-    ((cv::ocl::Kernel::Impl*)p)->finit();
+    ((cv::ocl::Kernel::Impl*)p)->finit(e);
 }
 
 }
@@ -2246,7 +2254,7 @@ bool Kernel::run(int dims, size_t _globalsize[], size_t _localsize[],
 {
     CV_INSTRUMENT_REGION_OPENCL_RUN(p->name.c_str());
 
-    if(!p || !p->handle || p->e != 0)
+    if(!p || !p->handle || p->isInProgress)
         return false;
 
     cl_command_queue qq = getQueue(q);
@@ -2265,9 +2273,10 @@ bool Kernel::run(int dims, size_t _globalsize[], size_t _localsize[],
         return true;
     if( p->haveTempDstUMats )
         sync = true;
+    cl_event asyncEvent = 0;
     cl_int retval = clEnqueueNDRangeKernel(qq, p->handle, (cl_uint)dims,
                                            offset, globalsize, _localsize, 0, 0,
-                                           sync ? 0 : &p->e);
+                                           sync ? 0 : &asyncEvent);
 #if CV_OPENCL_SHOW_RUN_ERRORS
     if (retval != CL_SUCCESS)
     {
@@ -2283,18 +2292,22 @@ bool Kernel::run(int dims, size_t _globalsize[], size_t _localsize[],
     else
     {
         p->addref();
-        CV_OclDbgAssert(clSetEventCallback(p->e, CL_COMPLETE, oclCleanupCallback, p) == CL_SUCCESS);
+        p->isInProgress = true;
+        CV_OclDbgAssert(clSetEventCallback(asyncEvent, CL_COMPLETE, oclCleanupCallback, p) == CL_SUCCESS);
     }
+    if (asyncEvent)
+        clReleaseEvent(asyncEvent);
     return retval == CL_SUCCESS;
 }
 
 bool Kernel::runTask(bool sync, const Queue& q)
 {
-    if(!p || !p->handle || p->e != 0)
+    if(!p || !p->handle || p->isInProgress)
         return false;
 
     cl_command_queue qq = getQueue(q);
-    cl_int retval = clEnqueueTask(qq, p->handle, 0, 0, sync ? 0 : &p->e);
+    cl_event asyncEvent = 0;
+    cl_int retval = clEnqueueTask(qq, p->handle, 0, 0, sync ? 0 : &asyncEvent);
     if( sync || retval != CL_SUCCESS )
     {
         CV_OclDbgAssert(clFinish(qq) == CL_SUCCESS);
@@ -2303,8 +2316,11 @@ bool Kernel::runTask(bool sync, const Queue& q)
     else
     {
         p->addref();
-        CV_OclDbgAssert(clSetEventCallback(p->e, CL_COMPLETE, oclCleanupCallback, p) == CL_SUCCESS);
+        p->isInProgress = true;
+        CV_OclDbgAssert(clSetEventCallback(asyncEvent, CL_COMPLETE, oclCleanupCallback, p) == CL_SUCCESS);
     }
+    if (asyncEvent)
+        clReleaseEvent(asyncEvent);
     return retval == CL_SUCCESS;
 }
 
@@ -3145,6 +3161,10 @@ public:
 
         matStdAllocator = Mat::getDefaultAllocator();
     }
+    ~OpenCLAllocator()
+    {
+        flushCleanupQueue();
+    }
 
     UMatData* defaultAllocate(int dims, const int* sizes, int type, void* data, size_t* step,
             int flags, UMatUsageFlags usageFlags) const
@@ -3181,6 +3201,7 @@ public:
         }
 
         Context& ctx = Context::getDefault();
+        flushCleanupQueue();
 
         int createFlags = 0, flags0 = 0;
         getBestFlags(ctx, flags, usageFlags, createFlags, flags0);
@@ -3234,6 +3255,8 @@ public:
     {
         if(!u)
             return false;
+
+        flushCleanupQueue();
 
         UMatDataAutoLock lock(u);
 
@@ -3369,6 +3392,15 @@ public:
 
         CV_Assert(u->handle != 0);
         CV_Assert(u->mapcount == 0);
+
+        if (u->flags & UMatData::ASYNC_CLEANUP)
+            addToCleanupQueue(u);
+        else
+            deallocate_(u);
+    }
+
+    void deallocate_(UMatData* u) const
+    {
         if(u->tempUMat())
         {
             CV_Assert(u->origdata);
@@ -4172,6 +4204,33 @@ public:
     }
 
     MatAllocator* matStdAllocator;
+
+    mutable cv::Mutex cleanupQueueMutex;
+    mutable std::deque<UMatData*> cleanupQueue;
+
+    void flushCleanupQueue() const
+    {
+        if (!cleanupQueue.empty())
+        {
+            std::deque<UMatData*> q;
+            {
+                cv::AutoLock lock(cleanupQueueMutex);
+                q.swap(cleanupQueue);
+            }
+            for (std::deque<UMatData*>::const_iterator i = q.begin(); i != q.end(); ++i)
+            {
+                deallocate_(*i);
+            }
+        }
+    }
+    void addToCleanupQueue(UMatData* u) const
+    {
+        //TODO: Validation check: CV_Assert(!u->tempUMat());
+        {
+            cv::AutoLock lock(cleanupQueueMutex);
+            cleanupQueue.push_back(u);
+        }
+    }
 };
 
 MatAllocator* getOpenCLAllocator()
