@@ -1,6 +1,5 @@
 Fall 2016
-CSE 2040 Group Project (Open CV)
-Members: Liandra, Abdul, Zhi, Ilya
+opencv code help tutorial
 
 ###Handling Git###
 
